@@ -123,9 +123,10 @@ class Spotify {
     });
     if (res.status === 204) return null;
     const text = await res.text();
-    const json = text ? JSON.parse(text) : null;
+    let json = null;
+    try { json = text ? JSON.parse(text) : null; } catch {} // some 403s are plain text
     if (!res.ok) {
-      const err = new Error(json?.error?.message || `${res.status}`);
+      const err = new Error(json?.error?.message || text.slice(0, 200) || `${res.status}`);
       err.status = res.status;
       err.reason = json?.error?.reason;
       throw err;
@@ -195,7 +196,7 @@ class Spotify {
       const meta = await this.api('GET', `/playlists/${id}?fields=name`);
       name = meta?.name || 'Playlist';
       let url = `/playlists/${id}/tracks?limit=100&fields=items(track(id,name,duration_ms,artists(name))),next`;
-      for (let page = 0; page < 3 && url; page++) {
+      for (let page = 0; page < 10 && url; page++) {
         const r = await this.api('GET', url);
         for (const it of r.items || []) {
           if (it.track && it.track.id) tracks.push(this.slim(it.track, tracks.length));
@@ -218,7 +219,7 @@ class Spotify {
     if (this.cache.uri === uri && now - this.cache.at < 120000) return { ...this.cache.view };
     const tracks = [];
     let url = '/me/tracks?limit=50';
-    for (let page = 0; page < 4 && url; page++) {
+    for (let page = 0; page < 10 && url; page++) {
       const r = await this.api('GET', url);
       for (const it of r.items || []) {
         if (it.track && it.track.id) tracks.push(this.slim(it.track, tracks.length));

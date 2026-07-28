@@ -67,6 +67,7 @@ body {
     width 380ms var(--drawer),
     height 380ms var(--drawer),
     border-radius 380ms var(--drawer),
+    background 320ms ease,
     box-shadow 380ms ease;
 }
 
@@ -78,6 +79,7 @@ body {
     width 500ms var(--spring),
     height 500ms var(--spring),
     border-radius 500ms var(--spring),
+    background 320ms ease,
     box-shadow 500ms ease;
   box-shadow:
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
@@ -94,10 +96,11 @@ body {
   background: rgba(190, 190, 190, 0.55);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   transition:
-    width 380ms var(--drawer),
-    height 380ms var(--drawer),
-    border-radius 380ms var(--drawer),
-    background 200ms ease;
+    width 420ms var(--drawer),
+    height 420ms var(--drawer),
+    border-radius 420ms var(--drawer),
+    background 320ms ease,
+    box-shadow 420ms ease;
 }
 
 .island[data-mode="line"]:hover { background: rgba(220, 220, 220, 0.8); }
@@ -568,17 +571,24 @@ body[data-panel="open"] .handle i { background: rgba(255, 255, 255, 0.5); }
   flex-direction: column;
   padding: 9px 9px 8px;
   opacity: 0;
-  transform: translateY(-10px) scale(0.96);
+  transform: translateY(-18px) scale(0.92);
   transform-origin: top center;
+  filter: blur(5px);
   pointer-events: none;
-  transition: opacity 150ms ease, transform 240ms var(--out);
+  transition: opacity 130ms ease, transform 230ms var(--out), filter 130ms ease;
 }
 
 body[data-panel="open"] .queuePanel {
   opacity: 1;
   transform: translateY(0) scale(1);
+  filter: blur(0);
   pointer-events: auto;
-  transition: opacity 200ms ease, transform 380ms var(--spring);
+  transition: opacity 210ms ease, transform 460ms var(--spring), filter 210ms ease;
+}
+
+@keyframes qIn {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .qHeader {

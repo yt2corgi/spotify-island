@@ -163,10 +163,13 @@ function onMedia(msg) {
 
 let mode = 'dock'; // 'dock' | 'line' (ultra-minimized)
 
+let lastExpandAt = 0;
+
 function setExpanded(on) {
   if (on && mode === 'line') return;
   if (expanded === on) return;
   expanded = on;
+  if (on) lastExpandAt = Date.now();
   island.dataset.state = on ? 'expanded' : 'collapsed';
   if (!on) closePanel();
   if (on) requestAnimationFrame(applyMarquee);
@@ -280,10 +283,13 @@ let queueReqId = 0;
 
 // The panel only stays open while the cursor is on the handle or the panel
 // itself; moving back onto the main island (or away) closes it.
+let panelOpenedAt = 0;
+
 function openPanel() {
   clearTimeout(panelCloseTimer);
   if (panelOpen || !expanded || mode === 'line') return;
   panelOpen = true;
+  panelOpenedAt = Date.now();
   document.body.dataset.panel = 'open';
   loadQueue();
   requestAnimationFrame(sendZone);
@@ -302,7 +308,12 @@ function schedulePanelClose() {
   panelCloseTimer = setTimeout(closePanel, 220);
 }
 
-handle.addEventListener('mouseenter', openPanel);
+// Guard: while the island is still growing under a stationary cursor, the
+// handle can slide beneath it and fire a phantom mouseenter — ignore those.
+handle.addEventListener('mouseenter', () => {
+  if (Date.now() - lastExpandAt < 500) return;
+  openPanel();
+});
 handle.addEventListener('mouseleave', schedulePanelClose);
 handle.addEventListener('click', () => (panelOpen ? closePanel() : openPanel()));
 queuePanel.addEventListener('mouseenter', () => clearTimeout(panelCloseTimer));
@@ -323,10 +334,16 @@ function renderQueue(view) {
     ? `${view.name} · ${view.tracks.length} songs`
     : `${view.tracks.length} songs`;
 
+  // Stagger rows in only when the panel has just opened (not on refreshes).
+  const stagger = Date.now() - panelOpenedAt < 450;
   const frag = document.createDocumentFragment();
   view.tracks.forEach((t, i) => {
     const row = document.createElement('div');
     row.className = 'qRow' + (i === view.currentIndex ? ' current' : '');
+    if (stagger && i < 12) {
+      row.style.animation = 'qIn 240ms var(--out) both';
+      row.style.animationDelay = `${70 + i * 24}ms`;
+    }
     const num = document.createElement('div');
     num.className = 'qNum';
     num.textContent = i === view.currentIndex ? '♪' : String(i + 1);
@@ -376,6 +393,7 @@ async function loadQueue() {
       'nothing-playing': 'Nothing playing right now.',
       'no-context': "This queue can't be read (radio or autoplay).",
       'premium': 'Spotify Premium is required for this.',
+      'owner-premium': "Spotify blocks its API for free accounts — the Spotify account that owns the API app needs Premium. (Spotify's rule, not Ohm's.)",
     };
     showQMsg(reasons[r?.reason] || 'Queue unavailable right now.', r?.reason === 'not-connected');
   }

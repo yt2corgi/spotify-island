@@ -245,7 +245,11 @@ function setupIpc() {
   ipcMain.handle('queue:get', async () => {
     try { return await spotify.getQueueView(); }
     catch (e) {
-      return { ok: false, reason: e.status === 403 ? 'premium' : 'error', message: String(e.message || e) };
+      const msg = String(e.message || e);
+      const reason = e.status === 403
+        ? (/owner of the app/i.test(msg) ? 'owner-premium' : 'premium')
+        : 'error';
+      return { ok: false, reason, message: msg };
     }
   });
 
