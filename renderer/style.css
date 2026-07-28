@@ -182,7 +182,13 @@ body {
 }
 
 .cTitle.scrolling .cTitleInner {
-  animation: marquee var(--marquee-dur, 10s) ease-in-out infinite alternate;
+  animation: marquee var(--marquee-dur, 10s) linear infinite;
+}
+
+/* Second copy trails the first so the loop wraps seamlessly */
+.cTitle.scrolling .cTitleInner::after {
+  content: attr(data-text);
+  padding-left: 48px;
 }
 
 .island[data-available="false"] .cTitle { color: rgba(255, 255, 255, 0.4); }
@@ -345,12 +351,19 @@ body {
 }
 
 .xTitle.marquee {
-  animation: marquee var(--marquee-dur, 8s) ease-in-out infinite alternate;
+  animation: marquee var(--marquee-dur, 8s) linear infinite;
 }
 
+.xTitle.marquee::after {
+  content: attr(data-text);
+  padding-left: 48px;
+}
+
+/* Scrolls one full copy + gap to the left, then wraps — the trailing
+   duplicate makes the restart invisible. Short hold at each loop start. */
 @keyframes marquee {
-  0%, 18%  { transform: translateX(0); }
-  82%, 100% { transform: translateX(var(--marquee-shift, 0)); }
+  0%, 10% { transform: translateX(0); }
+  100%    { transform: translateX(var(--marquee-shift, 0)); }
 }
 
 .xArtist {

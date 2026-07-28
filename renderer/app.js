@@ -89,27 +89,26 @@ function updateTicker() {
   if (!need && tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
 }
 
-function applyCompactMarquee() {
-  cTitle.classList.remove('scrolling');
-  const overflow = cTitleInner.scrollWidth - cTitle.clientWidth + 12;
-  if (overflow > 10) {
-    cTitleInner.style.setProperty('--marquee-shift', `-${overflow}px`);
-    cTitleInner.style.setProperty('--marquee-dur', `${Math.max(8, overflow / 10)}s`);
-    cTitle.classList.add('scrolling');
+// Continuous looping marquee: shift by one full copy + gap, with a
+// duplicate (::after) trailing so the wrap is seamless.
+const MARQUEE_GAP = 48;
+const MARQUEE_SPEED = 30; // px per second
+
+function setupLoop(el, clipEl, classEl, className) {
+  classEl.classList.remove(className);
+  el.removeAttribute('data-text');
+  const w = el.scrollWidth; // single copy width (no ::after while class is off)
+  if (w - clipEl.clientWidth > 6) {
+    const shift = w + MARQUEE_GAP;
+    el.dataset.text = el.textContent;
+    el.style.setProperty('--marquee-shift', `-${shift}px`);
+    el.style.setProperty('--marquee-dur', `${Math.max(6, shift / MARQUEE_SPEED)}s`);
+    classEl.classList.add(className);
   }
 }
 
-function applyMarquee() {
-  xTitle.classList.remove('marquee');
-  xTitle.style.removeProperty('--marquee-shift');
-  const clip = xTitle.parentElement;
-  const overflow = xTitle.scrollWidth - clip.clientWidth + 16;
-  if (overflow > 8) {
-    xTitle.style.setProperty('--marquee-shift', `-${overflow}px`);
-    xTitle.style.setProperty('--marquee-dur', `${Math.max(6, overflow / 12)}s`);
-    xTitle.classList.add('marquee');
-  }
-}
+function applyCompactMarquee() { setupLoop(cTitleInner, cTitle, cTitle, 'scrolling'); }
+function applyMarquee() { setupLoop(xTitle, xTitle.parentElement, xTitle, 'marquee'); }
 
 function render(prev) {
   const s = st;
