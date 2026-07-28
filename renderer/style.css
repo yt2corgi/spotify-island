@@ -568,13 +568,13 @@ body {
 
 .volPill {
   position: absolute;
-  top: 8px;
+  top: calc(8px + (var(--h-expanded) - 102px) / 2); /* centered on the island */
   left: calc(50% + var(--w-expanded) / 2 + 10px);
-  width: 18px;
-  height: var(--h-expanded);
-  padding: 4px;
+  width: 14px;
+  height: 102px;
+  padding: 3px;
   background: #000;
-  border-radius: 9px;
+  border-radius: 7px;
   box-shadow:
     inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
     0 2px 6px rgba(0, 0, 0, 0.35),
@@ -597,7 +597,7 @@ body[data-expanded="true"] .volPill {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.12);
 }
