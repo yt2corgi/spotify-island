@@ -111,7 +111,7 @@ function createWindow() {
     if (lastMsg.art) win.webContents.send('media', lastMsg.art);
     if (lastMsg.state) win.webContents.send('media', lastMsg.state);
     const s = readSettings();
-    if (s?.mode === 'line') win.webContents.send('set-mode', 'line');
+    if (s?.mode && s.mode !== 'dock') win.webContents.send('set-mode', s.mode);
   });
   win.on('closed', () => { win = null; });
 
@@ -221,7 +221,7 @@ function setupIpc() {
   });
 
   ipcMain.on('save-mode', (_e, mode) => {
-    if (mode !== 'line' && mode !== 'dock') return;
+    if (!['line', 'dock', 'mini'].includes(mode)) return;
     const s = readSettings() || { openAtLogin: true };
     writeSettings({ ...s, mode });
   });
@@ -259,6 +259,10 @@ function setupIpc() {
     menu.popup({ window: win });
   });
 }
+
+// The island's animations should play even when Windows' "animation
+// effects" accessibility setting is off (the CSS also ignores it).
+app.commandLine.appendSwitch('force-prefers-no-reduced-motion');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

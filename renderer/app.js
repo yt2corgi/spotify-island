@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id);
 const island = $('island');
 const compact = $('compact');
 const cTitle = $('cTitle');
+const cTitleInner = $('cTitleInner');
 const xTitle = $('xTitle');
 const xArtist = $('xArtist');
 const fill = $('fill');
@@ -88,6 +89,16 @@ function updateTicker() {
   if (!need && tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
 }
 
+function applyCompactMarquee() {
+  cTitle.classList.remove('scrolling');
+  const overflow = cTitleInner.scrollWidth - cTitle.clientWidth + 12;
+  if (overflow > 10) {
+    cTitleInner.style.setProperty('--marquee-shift', `-${overflow}px`);
+    cTitleInner.style.setProperty('--marquee-dur', `${Math.max(8, overflow / 10)}s`);
+    cTitle.classList.add('scrolling');
+  }
+}
+
 function applyMarquee() {
   xTitle.classList.remove('marquee');
   xTitle.style.removeProperty('--marquee-shift');
@@ -109,7 +120,8 @@ function render(prev) {
   island.dataset.playing = playing ? 'true' : 'false';
 
   if (!s || !s.available) {
-    cTitle.textContent = 'Not playing';
+    cTitleInner.textContent = 'Not playing';
+    cTitle.classList.remove('scrolling');
     xTitle.textContent = 'Not playing';
     xArtist.textContent = 'Open Spotify to get started';
     xTitle.classList.remove('marquee');
@@ -120,10 +132,10 @@ function render(prev) {
 
   const trackChanged = !prev || prev.title !== s.title || prev.artist !== s.artist;
   if (trackChanged) {
-    cTitle.textContent = s.artist ? `${s.title} — ${s.artist}` : s.title;
+    cTitleInner.textContent = s.artist ? `${s.title} — ${s.artist}` : s.title;
     xTitle.textContent = s.title || 'Unknown';
     xArtist.textContent = s.artist || '';
-    requestAnimationFrame(applyMarquee);
+    requestAnimationFrame(() => { applyMarquee(); applyCompactMarquee(); });
   }
 
   $('bShuffle').classList.toggle('on', !!s.shuffle);
@@ -157,7 +169,7 @@ function onMedia(msg) {
 // Expand / collapse
 // ------------------------------------------------------------------
 
-let mode = 'dock'; // 'dock' | 'line' (ultra-minimized)
+let mode = 'dock'; // 'dock' | 'mini' (waveform-only pill) | 'line' (thin line)
 
 function setExpanded(on) {
   if (on && mode === 'line') return;
@@ -176,13 +188,28 @@ function setMode(m, save = true) {
   if (save) window.native?.saveMode(m);
 }
 
-// Click the line to bring the dock back; middle-click the island to hide it.
-island.addEventListener('click', () => {
+// Gestures: click the line to bring the dock back; double-click toggles the
+// waveform-only mini pill; triple-click hides to the line. Middle-click also
+// toggles the line. (e.detail counts clicks in a burst.)
+let gestureTimer = 0;
+
+island.addEventListener('click', (e) => {
+  if (e.target.closest('.btn, .progress, .openBtn')) return;
   if (mode === 'line') {
     setMode('dock');
     setExpanded(true); // cursor is already on it
+    return;
+  }
+  if (e.detail === 2) {
+    clearTimeout(gestureTimer);
+    // wait a beat in case a third click turns this into the line gesture
+    gestureTimer = setTimeout(() => setMode(mode === 'mini' ? 'dock' : 'mini'), 260);
+  } else if (e.detail >= 3) {
+    clearTimeout(gestureTimer);
+    setMode('line');
   }
 });
+
 island.addEventListener('auxclick', (e) => {
   if (e.button === 1) setMode(mode === 'line' ? 'dock' : 'line');
 });

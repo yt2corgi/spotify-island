@@ -105,6 +105,21 @@ body {
 
 .island[data-mode="line"]:hover { background: rgba(220, 220, 220, 0.8); }
 
+/* Mini: the resting pill shows only the waveform (double-click toggles) */
+.island[data-mode="mini"][data-state="collapsed"] { width: 64px; }
+
+.island[data-mode="mini"][data-state="collapsed"] .compact {
+  justify-content: center;
+  padding: 0;
+}
+
+.island[data-mode="mini"][data-state="collapsed"] .cArt,
+.island[data-mode="mini"][data-state="collapsed"] .cTitle {
+  position: absolute; /* out of flow so the bars center */
+  opacity: 0;
+  pointer-events: none;
+}
+
 .island[data-mode="line"] .layer {
   opacity: 0 !important;
   pointer-events: none !important;
@@ -156,6 +171,18 @@ body {
   /* Apple truncates with a fade, not an ellipsis */
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
           mask-image: linear-gradient(to right, #000 calc(100% - 18px), transparent);
+}
+
+.cTitleInner { display: inline-block; }
+
+/* Long titles drift slowly back and forth instead of truncating */
+.cTitle.scrolling {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 12px), transparent);
+          mask-image: linear-gradient(to right, transparent, #000 10px, #000 calc(100% - 12px), transparent);
+}
+
+.cTitle.scrolling .cTitleInner {
+  animation: marquee var(--marquee-dur, 10s) ease-in-out infinite alternate;
 }
 
 .island[data-available="false"] .cTitle { color: rgba(255, 255, 255, 0.4); }
@@ -514,18 +541,5 @@ body {
 .openBtn:hover  { background: rgba(255, 255, 255, 0.16); }
 .openBtn:active { transform: scale(0.95); }
 
-/* ------------------------------------------------------------------ */
-/*  Reduced motion                                                      */
-/* ------------------------------------------------------------------ */
-
-@media (prefers-reduced-motion: reduce) {
-  .island[data-state],
-  .compact,
-  .expandedLayer,
-  .row {
-    transition-duration: 1ms !important;
-    transition-delay: 0ms !important;
-  }
-  .eq i { animation: none; transform: scaleY(0.5); }
-  .xTitle.marquee { animation: none; }
-}
+/* The island always animates — deliberately ignores the OS
+   "disable animations" setting (prefers-reduced-motion). */
