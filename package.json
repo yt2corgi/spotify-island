@@ -1,7 +1,7 @@
 {
   "name": "spotify-island",
   "productName": "Ohm",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Ohm — Dynamic Island-style Spotify controller for Windows",
   "main": "main.js",
   "author": "liamb",
