@@ -174,7 +174,13 @@ function render(prev) {
     requestAnimationFrame(() => { applyMarquee(); applyCompactMarquee(); });
   }
 
-  $('bShuffle').classList.toggle('on', !!s.shuffle);
+  // Tri-state shuffle: prefer the UIA-read mode (SMTC's bool reports FALSE
+  // during smart shuffle, so it can't be trusted alone).
+  const sm = s.shuffleMode && s.shuffleMode !== 'unknown'
+    ? s.shuffleMode
+    : (s.shuffle ? 'on' : 'off');
+  $('bShuffle').classList.toggle('on', sm !== 'off');
+  $('bShuffle').classList.toggle('smart', sm === 'smart');
   const rep = (s.repeat || 'None').toLowerCase();
   $('bRepeat').classList.toggle('on', rep !== 'none');
   $('bRepeat').classList.toggle('one', rep === 'track');
@@ -305,10 +311,9 @@ $('bPlay').addEventListener('click', () => {
 
 $('bNext').addEventListener('click', () => cmd('next'));
 $('bPrev').addEventListener('click', () => cmd('prev'));
-$('bShuffle').addEventListener('click', () => {
-  $('bShuffle').classList.toggle('on');
-  cmd('shuffle');
-});
+// No optimistic flip — the cycle has three states and the real one arrives
+// from the sidecar right after the click lands.
+$('bShuffle').addEventListener('click', () => cmd('shuffle'));
 $('bRepeat').addEventListener('click', () => cmd('repeat'));
 $('bOpen').addEventListener('click', () => window.native?.openSpotify());
 $('xArt').addEventListener('dblclick', () => window.native?.openSpotify());

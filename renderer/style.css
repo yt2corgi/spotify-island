@@ -509,6 +509,18 @@ body {
 
 .btnSmall.one .oneBadge { opacity: 1; }
 
+.smartBadge {
+  position: absolute;
+  top: 0;
+  right: 1px;
+  font-size: 9px;
+  color: var(--green);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.btnSmall.smart .smartBadge { opacity: 1; }
+
 .btn:disabled { opacity: 0.3; pointer-events: none; }
 
 /* ------------------------------------------------------------------ */

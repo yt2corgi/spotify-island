@@ -1,9 +1,123 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using Windows.Media;
 using Windows.Media.Control;
 
 namespace SmtcBridge;
+
+// Minimal hand-written UI Automation COM interop (dotnet CLI can't build
+// COMReference). Placeholders only hold vtable slots — never call them.
+[ComImport, Guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomation
+{
+    void _1(); void _2(); void _3();
+    IUIAutomationElement ElementFromHandle(IntPtr hwnd);                      // slot 4
+    void _5(); void _6(); void _7(); void _8(); void _9(); void _10();
+    void _11(); void _12(); void _13(); void _14(); void _15(); void _16();
+    void _17(); void _18(); void _19(); void _20();
+    IUIAutomationCondition CreatePropertyCondition(int propertyId,            // slot 21
+        [MarshalAs(UnmanagedType.Struct)] object value);
+}
+
+[ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationElement
+{
+    void _1(); void _2(); void _3();
+    IUIAutomationElementArray FindAll(int scope, IUIAutomationCondition condition); // slot 4
+    void _5(); void _6(); void _7(); void _8(); void _9(); void _10();
+    void _11(); void _12(); void _13();
+    [return: MarshalAs(UnmanagedType.IUnknown)]
+    object GetCurrentPattern(int patternId);                                  // slot 14
+    void _15(); void _16(); void _17(); void _18(); void _19(); void _20();
+    string CurrentName { [return: MarshalAs(UnmanagedType.BStr)] get; }       // slot 21
+}
+
+[ComImport, Guid("352ffba8-0973-437c-a61f-f64cafd81df9"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationCondition { }
+
+[ComImport, Guid("14314595-b4bc-4055-95f2-58f2e42c9855"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationElementArray
+{
+    int Length { get; }
+    IUIAutomationElement GetElement(int index);
+}
+
+[ComImport, Guid("fb377fbe-8ea6-46d5-9c73-6499642d3059"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationInvokePattern
+{
+    void Invoke();
+}
+
+// Drives Spotify's own shuffle button via UI Automation, because SMTC only
+// models shuffle as a bool and Spotify's cycle is off -> shuffle -> smart.
+// State is inferred from the button's accessible name:
+//   "Enable shuffle"       -> currently off
+//   "Enable Smart Shuffle" -> currently normal shuffle
+//   "Disable shuffle"      -> currently smart shuffle
+internal static class SpotifyShuffle
+{
+    private static IUIAutomation? _uia;
+    public static string Mode = "unknown"; // off | on | smart | unknown
+
+    private static IUIAutomationElement? FindButton()
+    {
+        try
+        {
+            _uia ??= (IUIAutomation)Activator.CreateInstance(
+                Type.GetTypeFromCLSID(new Guid("ff48dba4-60ef-4201-aa87-54103eef594e"))!)!;
+            foreach (var p in System.Diagnostics.Process.GetProcessesByName("Spotify"))
+            {
+                var h = p.MainWindowHandle;
+                if (h == IntPtr.Zero) continue;
+                var root = _uia.ElementFromHandle(h);
+                if (root == null) continue;
+                var cond = _uia.CreatePropertyCondition(30003 /*ControlType*/, 50000 /*Button*/);
+                var all = root.FindAll(4 /*TreeScope_Descendants*/, cond);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var el = all.GetElement(i);
+                    var name = el.CurrentName ?? "";
+                    if (name.IndexOf("shuffle", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                        (name.StartsWith("Enable", StringComparison.OrdinalIgnoreCase) ||
+                         name.StartsWith("Disable", StringComparison.OrdinalIgnoreCase)))
+                        return el;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static string ModeFromName(string name)
+    {
+        if (name.StartsWith("Disable", StringComparison.OrdinalIgnoreCase)) return "smart";
+        if (name.IndexOf("smart", StringComparison.OrdinalIgnoreCase) >= 0) return "on";
+        if (name.StartsWith("Enable", StringComparison.OrdinalIgnoreCase)) return "off";
+        return "unknown";
+    }
+
+    public static void Refresh()
+    {
+        var b = FindButton();
+        Mode = b == null ? "unknown" : ModeFromName(b.CurrentName ?? "");
+    }
+
+    public static async Task<bool> Cycle()
+    {
+        var b = FindButton();
+        if (b == null) return false;
+        try
+        {
+            var pat = (IUIAutomationInvokePattern)b.GetCurrentPattern(10000 /*Invoke*/);
+            pat.Invoke();
+            await Task.Delay(350);
+            Refresh();
+            return true;
+        }
+        catch { return false; }
+    }
+}
 
 // Streams the Windows media session (Spotify preferred) as JSON lines on stdout
 // and accepts transport commands on stdin. Event-driven; idles at ~0% CPU.
@@ -14,6 +128,8 @@ internal static class Program
     private static readonly SemaphoreSlim Signal = new(1, int.MaxValue);
     private static readonly object OutLock = new();
     private static string? _artKey;
+    private static bool? _lastShuffleBool;
+    private static DateTimeOffset _lastModeRefresh = DateTimeOffset.MinValue;
 
     private static async Task<int> Main()
     {
@@ -118,6 +234,16 @@ internal static class Program
         bool playing = pb.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
         var now = DateTimeOffset.UtcNow;
 
+        // Keep the tri-state shuffle mode fresh: whenever the SMTC bool flips
+        // (user used Spotify's UI) or every 30s as a safety net.
+        bool curShuffleBool = pb.IsShuffleActive ?? false;
+        if (curShuffleBool != _lastShuffleBool || (now - _lastModeRefresh).TotalSeconds > 30)
+        {
+            _lastShuffleBool = curShuffleBool;
+            _lastModeRefresh = now;
+            SpotifyShuffle.Refresh();
+        }
+
         double pos = tl.Position.TotalMilliseconds;
         if (playing) pos += (now - tl.LastUpdatedTime).TotalMilliseconds;
         double dur = tl.EndTime.TotalMilliseconds;
@@ -141,6 +267,7 @@ internal static class Program
             positionMs = (long)pos,
             durationMs = (long)dur,
             shuffle = pb.IsShuffleActive ?? false,
+            shuffleMode = SpotifyShuffle.Mode,
             repeat = (pb.AutoRepeatMode ?? MediaPlaybackAutoRepeatMode.None).ToString(),
             canSeek = pb.Controls.IsPlaybackPositionEnabled,
             canNext = pb.Controls.IsNextEnabled,
@@ -199,9 +326,12 @@ internal static class Program
                 break;
             case "shuffle":
             {
-                // Spotify's smart shuffle is a third state SMTC can't see: one
-                // "off" command can land on normal shuffle instead of off.
-                // Verify the result and re-send until the requested state sticks.
+                // Preferred: click Spotify's own button so the cycle matches
+                // Spotify exactly (off -> shuffle -> smart shuffle -> off).
+                if (await SpotifyShuffle.Cycle()) break;
+
+                // Fallback (Spotify window unavailable / non-English labels):
+                // plain SMTC toggle, verified so smart shuffle can't strand it.
                 bool desired = !(pb.IsShuffleActive ?? false);
                 for (int i = 0; i < 3; i++)
                 {
