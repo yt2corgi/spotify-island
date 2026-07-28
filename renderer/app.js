@@ -89,9 +89,8 @@ function updateTicker() {
   if (!need && tickTimer) { clearInterval(tickTimer); tickTimer = 0; }
 }
 
-// Continuous looping marquee: shift by one full copy + gap, with a
-// duplicate (::after) trailing so the wrap is seamless.
-const MARQUEE_GAP = 48;
+// Continuous looping marquee: a duplicate copy (::after, separated by a
+// dash) trails the first so the wrap is invisible.
 const MARQUEE_SPEED = 30; // px per second
 
 function setupLoop(el, clipEl, classEl, className) {
@@ -99,11 +98,11 @@ function setupLoop(el, clipEl, classEl, className) {
   el.removeAttribute('data-text');
   const w = el.scrollWidth; // single copy width (no ::after while class is off)
   if (w - clipEl.clientWidth > 6) {
-    const shift = w + MARQUEE_GAP;
     el.dataset.text = el.textContent;
+    classEl.classList.add(className);
+    const shift = el.scrollWidth - w; // one copy + separator, measured for real
     el.style.setProperty('--marquee-shift', `-${shift}px`);
     el.style.setProperty('--marquee-dur', `${Math.max(6, shift / MARQUEE_SPEED)}s`);
-    classEl.classList.add(className);
   }
 }
 
