@@ -106,8 +106,46 @@ function setupLoop(el, clipEl, classEl, className) {
   }
 }
 
-function applyCompactMarquee() { setupLoop(cTitleInner, cTitle, cTitle, 'scrolling'); }
 function applyMarquee() { setupLoop(xTitle, xTitle.parentElement, xTitle, 'marquee'); }
+
+// Compact title holds styled spans (white title, grey artist), so its loop
+// duplicates real DOM nodes instead of using ::after text.
+function compactPair(title, artist) {
+  const frag = document.createDocumentFragment();
+  const t = document.createElement('span');
+  t.className = 'tt';
+  t.textContent = title;
+  frag.append(t);
+  if (artist) {
+    const a = document.createElement('span');
+    a.className = 'ta';
+    a.textContent = ` — ${artist}`;
+    frag.append(a);
+  }
+  return frag;
+}
+
+function applyCompactMarquee() {
+  cTitle.classList.remove('scrolling');
+  cTitleInner.querySelectorAll('.clone').forEach((n) => n.remove());
+  const w = cTitleInner.scrollWidth;
+  if (w - cTitle.clientWidth > 6) {
+    const sep = document.createElement('span');
+    sep.className = 'ta clone';
+    sep.textContent = '  —  ';
+    const originals = [...cTitleInner.children];
+    cTitleInner.append(sep);
+    for (const n of originals) {
+      const c = n.cloneNode(true);
+      c.classList.add('clone');
+      cTitleInner.append(c);
+    }
+    const shift = cTitleInner.scrollWidth - w;
+    cTitleInner.style.setProperty('--marquee-shift', `-${shift}px`);
+    cTitleInner.style.setProperty('--marquee-dur', `${Math.max(6, shift / MARQUEE_SPEED)}s`);
+    cTitle.classList.add('scrolling');
+  }
+}
 
 function render(prev) {
   const s = st;
@@ -118,7 +156,7 @@ function render(prev) {
   island.dataset.playing = playing ? 'true' : 'false';
 
   if (!s || !s.available) {
-    cTitleInner.textContent = 'Not playing';
+    cTitleInner.replaceChildren(document.createTextNode('Not playing'));
     cTitle.classList.remove('scrolling');
     xTitle.textContent = 'Not playing';
     xArtist.textContent = 'Open Spotify to get started';
@@ -130,7 +168,7 @@ function render(prev) {
 
   const trackChanged = !prev || prev.title !== s.title || prev.artist !== s.artist;
   if (trackChanged) {
-    cTitleInner.textContent = s.artist ? `${s.title} — ${s.artist}` : s.title;
+    cTitleInner.replaceChildren(compactPair(s.title, s.artist));
     xTitle.textContent = s.title || 'Unknown';
     xArtist.textContent = s.artist || '';
     requestAnimationFrame(() => { applyMarquee(); applyCompactMarquee(); });

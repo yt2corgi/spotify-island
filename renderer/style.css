@@ -185,11 +185,8 @@ body {
   animation: marquee var(--marquee-dur, 10s) linear infinite;
 }
 
-/* Second copy trails the first, separated by a dash, so the loop wraps
-   seamlessly */
-.cTitle.scrolling .cTitleInner::after {
-  content: "\00a0\00a0\2014\00a0\00a0" attr(data-text);
-}
+/* The artist reads as secondary — grey against the white title */
+.cTitle .ta { color: rgba(255, 255, 255, 0.45); }
 
 .island[data-available="false"] .cTitle { color: rgba(255, 255, 255, 0.4); }
 

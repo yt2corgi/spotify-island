@@ -198,8 +198,19 @@ internal static class Program
                     await s.TryChangePlaybackPositionAsync(ms * 10000);
                 break;
             case "shuffle":
-                await s.TryChangeShuffleActiveAsync(!(pb.IsShuffleActive ?? false));
+            {
+                // Spotify's smart shuffle is a third state SMTC can't see: one
+                // "off" command can land on normal shuffle instead of off.
+                // Verify the result and re-send until the requested state sticks.
+                bool desired = !(pb.IsShuffleActive ?? false);
+                for (int i = 0; i < 3; i++)
+                {
+                    await s.TryChangeShuffleActiveAsync(desired);
+                    await Task.Delay(300);
+                    if ((s.GetPlaybackInfo().IsShuffleActive ?? false) == desired) break;
+                }
                 break;
+            }
             case "repeat":
                 var next = (pb.AutoRepeatMode ?? MediaPlaybackAutoRepeatMode.None) switch
                 {
