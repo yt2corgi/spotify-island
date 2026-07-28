@@ -172,7 +172,7 @@ function startSidecar() {
   sidecar.on('spawn', () => { sidecarBackoff = 1000; });
 }
 
-const ALLOWED_CMDS = /^(playpause|play|pause|next|prev|shuffle|repeat|seek -?\d{1,10})$/;
+const ALLOWED_CMDS = /^(playpause|play|pause|next|prev|shuffle|repeat|seek -?\d{1,10}|vol \d{1,3})$/;
 
 // Hover detection: forwarded mouse events through a click-through transparent
 // window are unreliable on Windows, so poll the cursor against the island's

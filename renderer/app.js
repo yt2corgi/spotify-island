@@ -12,6 +12,8 @@ const fill = $('fill');
 const tElapsed = $('tElapsed');
 const tRemain = $('tRemain');
 const progress = $('progress');
+const volPill = $('volPill');
+const volFill = $('volFill');
 
 const DEMO = location.hash.startsWith('#demo');
 const DEMO_EXPANDED = location.hash === '#demo-x';
@@ -30,6 +32,8 @@ let seekMuteUntil = 0;      // ignore stale positions right after a seek
 let playMuteUntil = 0;      // ignore stale playing flag right after play/pause
 let shuffleMuteUntil = 0;   // keep the predicted shuffle state briefly
 let shuffleSm = 'off';      // last known tri-state shuffle mode
+let volMuteUntil = 0;       // keep the locally-set volume briefly
+let curVol = 60;            // last known Spotify app volume (0-100)
 
 // ------------------------------------------------------------------
 // Album art (two stacked <img> per slot for crossfades)
@@ -190,6 +194,11 @@ function render(prev) {
   $('bRepeat').classList.toggle('on', rep !== 'none');
   $('bRepeat').classList.toggle('one', rep === 'track');
 
+  if (typeof s.volume === 'number' && s.volume >= 0 && Date.now() > volMuteUntil) {
+    curVol = s.volume;
+    volFill.style.setProperty('--vol', curVol / 100);
+  }
+
   renderTimeline();
   updateTicker();
 }
@@ -223,7 +232,9 @@ function setExpanded(on) {
   if (expanded === on) return;
   expanded = on;
   island.dataset.state = on ? 'expanded' : 'collapsed';
+  document.body.dataset.expanded = on ? 'true' : 'false';
   if (on) requestAnimationFrame(applyMarquee);
+  requestAnimationFrame(sendZone);
   updateTicker();
 }
 
@@ -279,10 +290,18 @@ function onHover(over) {
 }
 window.native?.onHover(onHover);
 
-// Report the island's live bounds to the main process for hit-testing.
+// Report live bounds to the main process for hit-testing. When expanded the
+// zone also covers the volume pill beside the island.
 function sendZone() {
   const r = island.getBoundingClientRect();
-  window.native?.zone({ x: r.x, y: r.y, w: r.width, h: r.height });
+  let x1 = r.left, y1 = r.top, x2 = r.right, y2 = r.bottom;
+  if (expanded) {
+    const v = volPill.getBoundingClientRect();
+    x1 = Math.min(x1, v.left);
+    x2 = Math.max(x2, v.right);
+    y2 = Math.max(y2, v.bottom);
+  }
+  window.native?.zone({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
 }
 new ResizeObserver(sendZone).observe(island);
 sendZone();
@@ -333,6 +352,47 @@ $('bShuffle').addEventListener('click', () => {
 $('bRepeat').addEventListener('click', () => cmd('repeat'));
 $('bOpen').addEventListener('click', () => window.native?.openSpotify());
 $('xArt').addEventListener('dblclick', () => window.native?.openSpotify());
+
+// ------------------------------------------------------------------
+// Volume (Spotify app volume through the Windows mixer)
+// ------------------------------------------------------------------
+
+let lastVolSend = 0;
+
+function setVolume(pct, send = true) {
+  curVol = Math.max(0, Math.min(100, Math.round(pct)));
+  volFill.style.setProperty('--vol', curVol / 100);
+  volMuteUntil = Date.now() + 1500;
+  if (send && Date.now() - lastVolSend > 60) {
+    lastVolSend = Date.now();
+    cmd(`vol ${curVol}`);
+  }
+}
+
+volPill.addEventListener('pointerdown', (e) => {
+  volPill.setPointerCapture(e.pointerId);
+  const track = volPill.firstElementChild.getBoundingClientRect();
+  const fromY = (ev) => (1 - (ev.clientY - track.top) / track.height) * 100;
+  setVolume(fromY(e));
+  const move = (ev) => setVolume(fromY(ev));
+  const up = (ev) => {
+    volPill.removeEventListener('pointermove', move);
+    volPill.removeEventListener('pointerup', up);
+    lastVolSend = 0;
+    setVolume(fromY(ev)); // final value always sent
+  };
+  volPill.addEventListener('pointermove', move);
+  volPill.addEventListener('pointerup', up);
+});
+
+// Scroll wheel anywhere on the island or the pill nudges volume.
+function onWheel(e) {
+  if (!expanded) return;
+  lastVolSend = 0;
+  setVolume(curVol + (e.deltaY < 0 ? 5 : -5));
+}
+island.addEventListener('wheel', onWheel, { passive: true });
+volPill.addEventListener('wheel', onWheel, { passive: true });
 
 // ------------------------------------------------------------------
 // Scrubbing
@@ -391,7 +451,7 @@ if (DEMO) {
   st = {
     type: 'state', available: true, title: 'Borderline', artist: 'Tame Impala',
     album: 'The Slow Rush', playing: true, positionMs: 83000, durationMs: 237000,
-    shuffle: true, repeat: 'None', ts: Date.now(),
+    shuffle: true, repeat: 'None', volume: 65, ts: Date.now(),
   };
   render(null);
   if (DEMO_EXPANDED) setExpanded(true);

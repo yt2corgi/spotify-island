@@ -144,6 +144,76 @@ internal static class SpotifyShuffle
 
 // Streams the Windows media session (Spotify preferred) as JSON lines on stdout
 // and accepts transport commands on stdin. Event-driven; idles at ~0% CPU.
+// Spotify's per-app volume via the Windows audio mixer (WASAPI session).
+internal static class SpotifyVolume
+{
+    private static readonly List<NAudio.CoreAudioApi.AudioSessionControl> Sessions = new();
+    private static DateTimeOffset _found = DateTimeOffset.MinValue;
+
+    private static void Find()
+    {
+        Sessions.Clear();
+        try
+        {
+            using var en = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+            foreach (var dev in en.EnumerateAudioEndPoints(
+                NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.DeviceState.Active))
+            {
+                var col = dev.AudioSessionManager.Sessions;
+                if (col == null) continue;
+                for (int i = 0; i < col.Count; i++)
+                {
+                    try
+                    {
+                        var s = col[i];
+                        var pid = (int)s.GetProcessID;
+                        if (pid == 0) continue;
+                        var pn = System.Diagnostics.Process.GetProcessById(pid).ProcessName;
+                        if (pn.Equals("Spotify", StringComparison.OrdinalIgnoreCase)) Sessions.Add(s);
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+        _found = DateTimeOffset.UtcNow;
+    }
+
+    private static void Ensure()
+    {
+        if (Sessions.Count == 0 || (DateTimeOffset.UtcNow - _found).TotalSeconds > 20) Find();
+    }
+
+    public static int Get()
+    {
+        Ensure();
+        foreach (var s in Sessions)
+        {
+            try { return (int)Math.Round(s.SimpleAudioVolume.Volume * 100); } catch { }
+        }
+        return -1;
+    }
+
+    public static void Set(int pct)
+    {
+        Ensure();
+        float v = Math.Clamp(pct, 0, 100) / 100f;
+        bool ok = false;
+        foreach (var s in Sessions)
+        {
+            try { s.SimpleAudioVolume.Volume = v; ok = true; } catch { }
+        }
+        if (!ok)
+        {
+            Find();
+            foreach (var s in Sessions)
+            {
+                try { s.SimpleAudioVolume.Volume = v; } catch { }
+            }
+        }
+    }
+}
+
 internal static class Program
 {
     private static GlobalSystemMediaTransportControlsSessionManager _manager = null!;
@@ -291,6 +361,7 @@ internal static class Program
             durationMs = (long)dur,
             shuffle = pb.IsShuffleActive ?? false,
             shuffleMode = SpotifyShuffle.Mode,
+            volume = SpotifyVolume.Get(),
             repeat = (pb.AutoRepeatMode ?? MediaPlaybackAutoRepeatMode.None).ToString(),
             canSeek = pb.Controls.IsPlaybackPositionEnabled,
             canNext = pb.Controls.IsNextEnabled,
@@ -347,6 +418,10 @@ internal static class Program
                 if (parts.Length == 2 && long.TryParse(parts[1], out var ms))
                     await s.TryChangePlaybackPositionAsync(ms * 10000);
                 break;
+            case "vol":
+                if (parts.Length == 2 && int.TryParse(parts[1], out var pct))
+                    SpotifyVolume.Set(pct);
+                return; // no bump needed — the client already shows the new value
             case "shuffle":
             {
                 // Preferred: click Spotify's own button so the cycle matches
