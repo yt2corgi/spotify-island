@@ -46,7 +46,8 @@
     "publish": {
       "provider": "github",
       "owner": "yt2corgi",
-      "repo": "spotify-island"
+      "repo": "spotify-island",
+      "releaseType": "release"
     }
   },
   "devDependencies": {
