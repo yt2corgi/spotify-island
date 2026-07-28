@@ -21,8 +21,6 @@
     "files": [
       "main.js",
       "preload.js",
-      "spotify.js",
-      "spotify-config.json",
       "renderer/**"
     ],
     "extraResources": [

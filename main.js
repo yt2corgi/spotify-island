@@ -4,24 +4,13 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const { Spotify } = require('./spotify');
-
 const WIN_W = 440;
-const WIN_H = 480; // tall enough for the queue drop-down state
-
-// Spotify Web API client ID (PKCE public client) for the queue drop-down.
-// Set it in spotify-config.json at the app root.
-function readClientId() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(__dirname, 'spotify-config.json'), 'utf8')).clientId || '';
-  } catch { return ''; }
-}
+const WIN_H = 220;
 
 let win = null;
 let sidecar = null;
 let sidecarBackoff = 1000;
 let quitting = false;
-let spotify = null;
 const lastMsg = {}; // replay cache: renderer may load after the sidecar's first burst
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
@@ -56,7 +45,7 @@ function migrateUserData() {
     const newDir = app.getPath('userData');
     if (!fs.existsSync(oldDir) || fs.existsSync(path.join(newDir, 'settings.json'))) return;
     fs.mkdirSync(newDir, { recursive: true });
-    for (const f of ['settings.json', 'spotify-tokens.json']) {
+    for (const f of ['settings.json']) {
       const src = path.join(oldDir, f);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(newDir, f));
     }
@@ -113,8 +102,7 @@ function createWindow() {
   win.setMenu(null);
   positionWindow();
 
-  const hash = process.argv.includes('--demo-queue') ? 'demo-q'
-    : process.argv.includes('--demo-expanded') ? 'demo-x'
+  const hash = process.argv.includes('--demo-expanded') ? 'demo-x'
     : process.argv.includes('--demo') ? 'demo' : undefined;
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'), hash ? { hash } : undefined);
 
@@ -242,59 +230,11 @@ function setupIpc() {
     shell.openExternal('spotify:').catch(() => {});
   });
 
-  ipcMain.handle('queue:get', async () => {
-    try { return await spotify.getQueueView(); }
-    catch (e) {
-      const msg = String(e.message || e);
-      const reason = e.status === 403
-        ? (/owner of the app/i.test(msg) ? 'owner-premium' : 'premium')
-        : 'error';
-      return { ok: false, reason, message: msg };
-    }
-  });
-
-  ipcMain.handle('queue:jump', async (_e, { contextUri, position, currentIndex, shuffle }) => {
-    try {
-      if (!contextUri) throw Object.assign(new Error('no context'), { status: 403 });
-      await spotify.jumpTo(contextUri, position);
-      return { ok: true, method: 'api' };
-    } catch (e) {
-      // Free accounts can't PUT /me/player/play — fall back to skipping
-      // forward through the sidecar when the target is ahead in order.
-      const ahead = position - currentIndex;
-      if (e.status === 403 && !shuffle && ahead > 0 && ahead <= 30 && sidecar?.stdin.writable) {
-        for (let i = 0; i < ahead; i++) {
-          sidecar.stdin.write('next\n');
-          await new Promise((r) => setTimeout(r, 220));
-        }
-        return { ok: true, method: 'skip' };
-      }
-      return { ok: false, reason: e.status === 403 ? 'premium' : 'error', message: String(e.message || e) };
-    }
-  });
-
-  ipcMain.handle('spotify:connect', async () => {
-    try {
-      const r = await spotify.connect();
-      return r;
-    } catch (e) {
-      return { ok: false, reason: 'error', message: String(e.message || e) };
-    }
-  });
-
   ipcMain.on('menu', () => {
     if (!win) return;
     const s = readSettings() || { openAtLogin: true };
     const menu = Menu.buildFromTemplate([
       { label: 'Open Spotify', click: () => shell.openExternal('spotify:').catch(() => {}) },
-      {
-        label: spotify?.connected ? 'Reconnect Spotify account…' : 'Connect Spotify account…',
-        enabled: !!spotify?.configured,
-        click: async () => {
-          const r = await spotify.connect().catch(() => null);
-          if (r?.ok && win && !win.isDestroyed()) win.webContents.send('spotify-connected');
-        },
-      },
       { type: 'separator' },
       {
         label: s.mode === 'line' ? 'Show the dock' : 'Minimize to a line',
@@ -327,7 +267,6 @@ if (!gotLock) {
   app.whenReady().then(() => {
     try { os.setPriority(os.constants.priority.PRIORITY_ABOVE_NORMAL); } catch {}
     migrateUserData();
-    spotify = new Spotify(app.getPath('userData'), readClientId());
     initLoginItem();
     setupIpc();
     createWindow();

@@ -3,10 +3,9 @@
 A macOS Dynamic Island-style Spotify controller for Windows. A black pill floats
 at the top-center of the screen showing the current track; hovering it springs
 open an expanded panel with album art, a scrubbable timeline, and transport
-controls (shuffle / previous / play-pause / next / repeat). Hovering the little
-bar at the bottom drops a detached queue card; middle-click the island (or use
-the right-click menu) to minimize the whole thing to a thin line — click the
-line to bring it back.
+controls (shuffle / previous / play-pause / next / repeat). Middle-click the
+island (or use the right-click menu) to minimize the whole thing to a thin
+line — click the line to bring it back.
 
 To change the app icon, drop a square PNG (256px or larger) named `icon.png`
 into `build/` — it becomes the installer + app icon on the next build.
@@ -32,23 +31,6 @@ npm install
 npm run build:sidecar   # needs .NET 8 SDK, one time
 npm start
 ```
-
-## Queue drop-down (one-time setup)
-
-The little bar at the bottom of the expanded island drops down the current
-playlist/album so you can click any song to jump to it. Windows' media session
-has no queue data, so this uses the Spotify Web API and needs a client ID once:
-
-1. Go to https://developer.spotify.com/dashboard → Create app.
-2. Name it anything; set the Redirect URI to `http://127.0.0.1:8898/callback`
-   (Web API, no secret needed — this is a PKCE public client).
-3. Copy the Client ID into `spotify-config.json` (`"clientId": "..."`).
-4. Right-click the island → "Connect Spotify account…" and approve in the browser.
-
-While the Spotify app is in Development Mode, each person who uses the queue
-feature must be added under User Management in the dashboard (max 25).
-Jumping to a song uses the Web API (Premium); free accounts fall back to
-skip-forward when the target is later in the list.
 
 ## Auto-update / publishing
 

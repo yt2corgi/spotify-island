@@ -14,7 +14,7 @@
   --h-collapsed: 36px;
   --r-collapsed: 18px;
   --w-expanded: 384px;
-  --h-expanded: 170px;
+  --h-expanded: 158px;
   --r-expanded: 26px;
 }
 
@@ -105,8 +105,7 @@ body {
 
 .island[data-mode="line"]:hover { background: rgba(220, 220, 220, 0.8); }
 
-.island[data-mode="line"] .layer,
-.island[data-mode="line"] .handle {
+.island[data-mode="line"] .layer {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -516,175 +515,6 @@ body {
 .openBtn:active { transform: scale(0.95); }
 
 /* ------------------------------------------------------------------ */
-/*  Drop-down handle (iOS home-indicator style)                         */
-/* ------------------------------------------------------------------ */
-
-.handle {
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 140px;
-  height: 15px;
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 180ms ease;
-}
-
-.handle i {
-  width: 42px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.28);
-  transition: background 160ms ease, transform 200ms var(--out);
-}
-
-.island[data-state="expanded"] .handle {
-  opacity: 1;
-  pointer-events: auto;
-  transition: opacity 200ms ease 150ms;
-}
-
-.handle:hover i,
-body[data-panel="open"] .handle i { background: rgba(255, 255, 255, 0.5); }
-
-/* ------------------------------------------------------------------ */
-/*  Queue panel                                                         */
-/* ------------------------------------------------------------------ */
-
-.queuePanel {
-  position: absolute;
-  top: calc(8px + var(--h-expanded) + 12px); /* island top + height + gap */
-  left: 50%;
-  width: var(--w-expanded);
-  margin-left: calc(var(--w-expanded) / -2);
-  height: 264px;
-  background: #000;
-  border-radius: 24px;
-  box-shadow:
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.35),
-    0 12px 36px rgba(0, 0, 0, 0.34);
-  display: flex;
-  flex-direction: column;
-  padding: 9px 9px 8px;
-  opacity: 0;
-  transform: translateY(-18px) scale(0.92);
-  transform-origin: top center;
-  filter: blur(5px);
-  pointer-events: none;
-  transition: opacity 130ms ease, transform 230ms var(--out), filter 130ms ease;
-}
-
-body[data-panel="open"] .queuePanel {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  filter: blur(0);
-  pointer-events: auto;
-  transition: opacity 210ms ease, transform 460ms var(--spring), filter 210ms ease;
-}
-
-@keyframes qIn {
-  from { opacity: 0; transform: translateY(7px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.qHeader {
-  flex-shrink: 0;
-  padding: 4px 11px 7px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: rgba(255, 255, 255, 0.4);
-  white-space: nowrap;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
-          mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent);
-}
-
-.qList {
-  position: relative; /* offsetTop of rows measured against the list */
-  flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  min-height: 0;
-}
-
-.qList::-webkit-scrollbar { width: 3px; }
-.qList::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 2px; }
-.qList::-webkit-scrollbar-track { background: transparent; }
-
-.qRow {
-  display: grid;
-  grid-template-columns: 22px 1fr 38px;
-  align-items: center;
-  gap: 10px;
-  height: 43px;
-  padding: 0 11px;
-  border-radius: 11px;
-  transition: background 140ms ease, transform 160ms var(--out);
-}
-
-.qRow:hover  { background: rgba(255, 255, 255, 0.07); }
-.qRow:active { transform: scale(0.985); background: rgba(255, 255, 255, 0.1); }
-
-.qNum {
-  font-size: 10.5px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.35);
-  text-align: center;
-}
-
-.qRow.current .qNum { color: var(--green); }
-
-.qMid { min-width: 0; }
-
-.qTitle {
-  font-size: 12.5px;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.88);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.qRow.current .qTitle { color: var(--green); font-weight: 600; }
-
-.qArtist {
-  margin-top: 1px;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.42);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.qDur {
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: rgba(255, 255, 255, 0.35);
-  text-align: right;
-}
-
-.qMsg {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 13px;
-  padding: 0 30px;
-  text-align: center;
-  font-size: 12.5px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-/* ------------------------------------------------------------------ */
 /*  Reduced motion                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -692,9 +522,7 @@ body[data-panel="open"] .queuePanel {
   .island[data-state],
   .compact,
   .expandedLayer,
-  .row,
-  .queuePanel,
-  .handle {
+  .row {
     transition-duration: 1ms !important;
     transition-delay: 0ms !important;
   }

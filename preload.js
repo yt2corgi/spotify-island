@@ -7,10 +7,6 @@ contextBridge.exposeInMainWorld('native', {
   zone: (r) => ipcRenderer.send('zone', r),
   menu: () => ipcRenderer.send('menu'),
   openSpotify: () => ipcRenderer.send('open-spotify'),
-  getQueue: () => ipcRenderer.invoke('queue:get'),
-  jump: (args) => ipcRenderer.invoke('queue:jump', args),
-  spotifyConnect: () => ipcRenderer.invoke('spotify:connect'),
-  onSpotifyConnected: (cb) => ipcRenderer.on('spotify-connected', () => cb()),
   saveMode: (m) => ipcRenderer.send('save-mode', m),
   onMode: (cb) => ipcRenderer.on('set-mode', (_e, m) => cb(m)),
 });

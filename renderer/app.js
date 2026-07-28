@@ -13,8 +13,7 @@ const tRemain = $('tRemain');
 const progress = $('progress');
 
 const DEMO = location.hash.startsWith('#demo');
-const DEMO_EXPANDED = location.hash === '#demo-x' || location.hash === '#demo-q';
-const DEMO_QUEUE = location.hash === '#demo-q';
+const DEMO_EXPANDED = location.hash === '#demo-x';
 
 // ------------------------------------------------------------------
 // State
@@ -22,8 +21,6 @@ const DEMO_QUEUE = location.hash === '#demo-q';
 
 let st = null;              // last media state from the sidecar
 let expanded = false;
-let panelOpen = false;      // queue drop-down visible
-let panelCloseTimer = 0;
 let expandTimer = 0;
 let collapseTimer = 0;
 let tickTimer = 0;
@@ -127,7 +124,6 @@ function render(prev) {
     xTitle.textContent = s.title || 'Unknown';
     xArtist.textContent = s.artist || '';
     requestAnimationFrame(applyMarquee);
-    if (panelOpen && !DEMO) setTimeout(loadQueue, 600); // re-sync highlight on track change
   }
 
   $('bShuffle').classList.toggle('on', !!s.shuffle);
@@ -163,15 +159,11 @@ function onMedia(msg) {
 
 let mode = 'dock'; // 'dock' | 'line' (ultra-minimized)
 
-let lastExpandAt = 0;
-
 function setExpanded(on) {
   if (on && mode === 'line') return;
   if (expanded === on) return;
   expanded = on;
-  if (on) lastExpandAt = Date.now();
   island.dataset.state = on ? 'expanded' : 'collapsed';
-  if (!on) closePanel();
   if (on) requestAnimationFrame(applyMarquee);
   updateTicker();
 }
@@ -180,7 +172,7 @@ function setMode(m, save = true) {
   if (mode === m) return;
   mode = m;
   island.dataset.mode = m;
-  if (m === 'line') { setExpanded(false); closePanel(); }
+  if (m === 'line') setExpanded(false);
   if (save) window.native?.saveMode(m);
 }
 
@@ -213,18 +205,10 @@ function onHover(over) {
 }
 window.native?.onHover(onHover);
 
-// Report live bounds to the main process for hit-testing. When the queue
-// panel is open the hover zone is the union of island + gap + panel.
+// Report the island's live bounds to the main process for hit-testing.
 function sendZone() {
   const r = island.getBoundingClientRect();
-  let x1 = r.left, y1 = r.top, x2 = r.right, y2 = r.bottom;
-  if (panelOpen) {
-    const p = queuePanel.getBoundingClientRect();
-    x1 = Math.min(x1, p.left);
-    x2 = Math.max(x2, p.right);
-    y2 = Math.max(y2, p.bottom);
-  }
-  window.native?.zone({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+  window.native?.zone({ x: r.x, y: r.y, w: r.width, h: r.height });
 }
 new ResizeObserver(sendZone).observe(island);
 sendZone();
@@ -265,188 +249,6 @@ $('bShuffle').addEventListener('click', () => {
 $('bRepeat').addEventListener('click', () => cmd('repeat'));
 $('bOpen').addEventListener('click', () => window.native?.openSpotify());
 $('xArt').addEventListener('dblclick', () => window.native?.openSpotify());
-
-// ------------------------------------------------------------------
-// Queue drop-down
-// ------------------------------------------------------------------
-
-const handle = $('handle');
-const queuePanel = $('queuePanel');
-const qList = $('qList');
-const qHeader = $('qHeader');
-const qMsg = $('qMsg');
-const qMsgText = $('qMsgText');
-const bConnect = $('bConnect');
-
-let queueView = null;    // last successful view (stale-while-revalidate)
-let queueReqId = 0;
-
-// The panel only stays open while the cursor is on the handle or the panel
-// itself; moving back onto the main island (or away) closes it.
-let panelOpenedAt = 0;
-
-function openPanel() {
-  clearTimeout(panelCloseTimer);
-  if (panelOpen || !expanded || mode === 'line') return;
-  panelOpen = true;
-  panelOpenedAt = Date.now();
-  document.body.dataset.panel = 'open';
-  loadQueue();
-  requestAnimationFrame(sendZone);
-}
-
-function closePanel() {
-  clearTimeout(panelCloseTimer);
-  if (!panelOpen) return;
-  panelOpen = false;
-  delete document.body.dataset.panel;
-  requestAnimationFrame(sendZone);
-}
-
-function schedulePanelClose() {
-  clearTimeout(panelCloseTimer);
-  panelCloseTimer = setTimeout(closePanel, 220);
-}
-
-// Guard: while the island is still growing under a stationary cursor, the
-// handle can slide beneath it and fire a phantom mouseenter — ignore those.
-handle.addEventListener('mouseenter', () => {
-  if (Date.now() - lastExpandAt < 500) return;
-  openPanel();
-});
-handle.addEventListener('mouseleave', schedulePanelClose);
-handle.addEventListener('click', () => (panelOpen ? closePanel() : openPanel()));
-queuePanel.addEventListener('mouseenter', () => clearTimeout(panelCloseTimer));
-queuePanel.addEventListener('mouseleave', schedulePanelClose);
-
-function showQMsg(text, connect) {
-  qMsg.hidden = false;
-  qMsgText.textContent = text;
-  bConnect.hidden = !connect;
-  qList.style.visibility = 'hidden';
-  qHeader.textContent = 'Queue';
-}
-
-function renderQueue(view) {
-  qMsg.hidden = true;
-  qList.style.visibility = 'visible';
-  qHeader.textContent = view.name
-    ? `${view.name} · ${view.tracks.length} songs`
-    : `${view.tracks.length} songs`;
-
-  // Stagger rows in only when the panel has just opened (not on refreshes).
-  const stagger = Date.now() - panelOpenedAt < 450;
-  const frag = document.createDocumentFragment();
-  view.tracks.forEach((t, i) => {
-    const row = document.createElement('div');
-    row.className = 'qRow' + (i === view.currentIndex ? ' current' : '');
-    if (stagger && i < 12) {
-      row.style.animation = 'qIn 240ms var(--out) both';
-      row.style.animationDelay = `${70 + i * 24}ms`;
-    }
-    const num = document.createElement('div');
-    num.className = 'qNum';
-    num.textContent = i === view.currentIndex ? '♪' : String(i + 1);
-    const mid = document.createElement('div');
-    mid.className = 'qMid';
-    const title = document.createElement('div');
-    title.className = 'qTitle';
-    title.textContent = t.title;
-    const artist = document.createElement('div');
-    artist.className = 'qArtist';
-    artist.textContent = t.artist;
-    mid.append(title, artist);
-    const dur = document.createElement('div');
-    dur.className = 'qDur';
-    dur.textContent = t.durMs ? fmt(t.durMs) : '';
-    row.append(num, mid, dur);
-    row.addEventListener('click', () => jumpTo(view, i));
-    frag.append(row);
-  });
-  qList.replaceChildren(frag);
-
-  const scrollToCurrent = () => {
-    const cur = qList.children[view.currentIndex];
-    if (cur) qList.scrollTop = Math.max(0, cur.offsetTop - qList.clientHeight / 2 + cur.offsetHeight / 2);
-  };
-  // The island may still be mid-spring when this renders; wait for real height.
-  if (qList.clientHeight > 80) scrollToCurrent();
-  else setTimeout(scrollToCurrent, 540);
-}
-
-async function loadQueue() {
-  if (DEMO) { renderQueue(demoQueue()); return; }
-  if (queueView) renderQueue(queueView);
-  else showQMsg('Loading…', false);
-
-  const id = ++queueReqId;
-  const r = await window.native?.getQueue();
-  if (id !== queueReqId || !panelOpen) return;
-
-  if (r?.ok) {
-    queueView = r;
-    renderQueue(r);
-  } else if (!queueView) {
-    const reasons = {
-      'no-client-id': 'Queue needs a one-time Spotify setup — see the README.',
-      'not-connected': 'Connect your Spotify account to see the queue.',
-      'nothing-playing': 'Nothing playing right now.',
-      'no-context': "This queue can't be read (radio or autoplay).",
-      'premium': 'Spotify Premium is required for this.',
-      'owner-premium': "Spotify blocks its API for free accounts — the Spotify account that owns the API app needs Premium. (Spotify's rule, not Ohm's.)",
-    };
-    showQMsg(reasons[r?.reason] || 'Queue unavailable right now.', r?.reason === 'not-connected');
-  }
-}
-
-async function jumpTo(view, i) {
-  const oldIndex = view.currentIndex;
-  // optimistic highlight
-  const prev = qList.querySelector('.qRow.current');
-  if (prev) {
-    prev.classList.remove('current');
-    prev.querySelector('.qNum').textContent = String([...qList.children].indexOf(prev) + 1);
-  }
-  const row = qList.children[i];
-  if (row) {
-    row.classList.add('current');
-    row.querySelector('.qNum').textContent = '♪';
-  }
-  if (view) view.currentIndex = i;
-
-  const r = await window.native?.jump({
-    contextUri: view.contextUri,
-    position: i,
-    currentIndex: oldIndex,
-    shuffle: !!(st && st.shuffle),
-  });
-  if (!r?.ok) {
-    qHeader.textContent = r?.reason === 'premium'
-      ? 'Spotify Premium is needed to jump'
-      : 'Could not jump to that song';
-    setTimeout(() => { if (queueView) renderQueue(queueView); }, 2200);
-  }
-}
-
-bConnect.addEventListener('click', async () => {
-  showQMsg('Check your browser to approve…', false);
-  const r = await window.native?.spotifyConnect();
-  if (r?.ok) loadQueue();
-  else if (r?.reason === 'no-client-id') showQMsg('Queue needs a one-time Spotify setup — see the README.', false);
-  else showQMsg('Connection failed — try again from the right-click menu.', true);
-});
-
-window.native?.onSpotifyConnected(() => { if (panelOpen) loadQueue(); });
-
-function demoQueue() {
-  const names = ['Borderline', 'Breathe Deeper', 'Lost in Yesterday', 'Is It True', 'It Might Be Time', 'Glimmer', 'One More Hour', 'Instant Destiny'];
-  return {
-    name: 'The Slow Rush',
-    contextUri: null,
-    currentIndex: 0,
-    tracks: names.map((n, i) => ({ i, id: String(i), title: n, artist: 'Tame Impala', durMs: 180000 + i * 21000 })),
-  };
-}
 
 // ------------------------------------------------------------------
 // Scrubbing
@@ -509,5 +311,4 @@ if (DEMO) {
   };
   render(null);
   if (DEMO_EXPANDED) setExpanded(true);
-  if (DEMO_QUEUE) openPanel();
 }
