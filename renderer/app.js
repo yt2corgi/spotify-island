@@ -371,18 +371,22 @@ function setVolume(pct, send = true) {
 
 volPill.addEventListener('pointerdown', (e) => {
   volPill.setPointerCapture(e.pointerId);
+  window.native?.lock(true); // window must stay interactive for the whole drag
   const track = volPill.firstElementChild.getBoundingClientRect();
   const fromY = (ev) => (1 - (ev.clientY - track.top) / track.height) * 100;
   setVolume(fromY(e));
   const move = (ev) => setVolume(fromY(ev));
-  const up = (ev) => {
+  const end = (ev) => {
     volPill.removeEventListener('pointermove', move);
-    volPill.removeEventListener('pointerup', up);
+    volPill.removeEventListener('pointerup', end);
+    volPill.removeEventListener('pointercancel', end);
+    window.native?.lock(false);
     lastVolSend = 0;
     setVolume(fromY(ev)); // final value always sent
   };
   volPill.addEventListener('pointermove', move);
-  volPill.addEventListener('pointerup', up);
+  volPill.addEventListener('pointerup', end);
+  volPill.addEventListener('pointercancel', end);
 });
 
 // Scroll wheel anywhere on the island or the pill nudges volume.
@@ -408,6 +412,7 @@ progress.addEventListener('pointerdown', (e) => {
   scrubbing = true;
   progress.classList.add('scrubbing');
   progress.setPointerCapture(e.pointerId);
+  window.native?.lock(true);
   const move = (ev) => {
     const p = scrubPos(ev);
     fill.style.transform = `scaleX(${p})`;
@@ -420,6 +425,7 @@ progress.addEventListener('pointerdown', (e) => {
     progress.removeEventListener('pointerup', up);
     progress.classList.remove('scrubbing');
     scrubbing = false;
+    window.native?.lock(false);
     const ms = Math.round(scrubPos(ev) * st.durationMs);
     st.positionMs = ms;
     st.ts = Date.now();

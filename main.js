@@ -176,9 +176,10 @@ const ALLOWED_CMDS = /^(playpause|play|pause|next|prev|shuffle|repeat|seek -?\d{
 
 // Hover detection: forwarded mouse events through a click-through transparent
 // window are unreliable on Windows, so poll the cursor against the island's
-// reported bounds instead (~8Hz; negligible cost).
+// reported bounds instead.
 let zone = null;
 let hovering = false;
+let interactionLock = false; // held during drags — never go click-through mid-drag
 
 const DEBUG_HOVER = process.argv.includes('--debug-hover');
 let dbgTick = 0;
@@ -195,7 +196,7 @@ function startHoverWatch() {
           }) + '\n');
       } catch {}
     }
-    if (!win || !zone) return;
+    if (!win || !zone || interactionLock) return;
     const p = screen.getCursorScreenPoint();
     const b = win.getBounds();
     const pad = 3;
@@ -218,6 +219,10 @@ function setupIpc() {
 
   ipcMain.on('zone', (_e, r) => {
     if (r && typeof r.x === 'number') zone = r;
+  });
+
+  ipcMain.on('interaction-lock', (_e, on) => {
+    interactionLock = !!on;
   });
 
   ipcMain.on('save-mode', (_e, mode) => {

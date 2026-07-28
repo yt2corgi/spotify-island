@@ -49,6 +49,16 @@ internal interface IUIAutomationInvokePattern
     void Invoke();
 }
 
+[ComImport, Guid("59213f4f-7346-49e5-b120-80555987a148"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+internal interface IUIAutomationRangeValuePattern
+{
+    void SetValue(double val);
+    double CurrentValue { get; }
+    int CurrentIsReadOnly { get; }
+    double CurrentMaximum { get; }
+    double CurrentMinimum { get; }
+}
+
 // Drives Spotify's own shuffle button via UI Automation, because SMTC only
 // models shuffle as a bool and Spotify's cycle is off -> shuffle -> smart.
 // State is inferred from the button's accessible name:
@@ -144,6 +154,84 @@ internal static class SpotifyShuffle
 
 // Streams the Windows media session (Spotify preferred) as JSON lines on stdout
 // and accepts transport commands on stdin. Event-driven; idles at ~0% CPU.
+// Spotify's own in-app volume slider via UI Automation (RangeValue pattern),
+// so the island mirrors Spotify's slider exactly. Falls back to the Windows
+// mixer session (below) when the Spotify window isn't reachable.
+internal static class SpotifyVolumeUia
+{
+    private static IUIAutomation? _uia;
+    private static IUIAutomationElement? _slider;
+
+    private static IUIAutomationRangeValuePattern? Pattern(IUIAutomationElement? el)
+    {
+        try { return el == null ? null : (IUIAutomationRangeValuePattern)el.GetCurrentPattern(10003); }
+        catch { return null; }
+    }
+
+    private static IUIAutomationElement? FindSlider()
+    {
+        try
+        {
+            _uia ??= (IUIAutomation)Activator.CreateInstance(
+                Type.GetTypeFromCLSID(new Guid("ff48dba4-60ef-4201-aa87-54103eef594e"))!)!;
+            foreach (var p in System.Diagnostics.Process.GetProcessesByName("Spotify"))
+            {
+                var h = p.MainWindowHandle;
+                if (h == IntPtr.Zero) continue;
+                var root = _uia.ElementFromHandle(h);
+                if (root == null) continue;
+                var cond = _uia.CreatePropertyCondition(30003 /*ControlType*/, 50015 /*Slider*/);
+                var all = root.FindAll(4 /*Descendants*/, cond);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    var el = all.GetElement(i);
+                    string name;
+                    try { name = el.CurrentName ?? ""; } catch { continue; }
+                    if (name.IndexOf("volume", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return el;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    private static IUIAutomationElement? GetSlider()
+    {
+        if (_slider != null && Pattern(_slider) != null) return _slider;
+        _slider = FindSlider();
+        return _slider;
+    }
+
+    public static int Get()
+    {
+        var pat = Pattern(GetSlider());
+        if (pat == null) return -1;
+        try
+        {
+            double min = pat.CurrentMinimum, max = pat.CurrentMaximum;
+            if (max <= min) return -1;
+            var pct = (int)Math.Round((pat.CurrentValue - min) / (max - min) * 100);
+            return Math.Clamp(pct, 0, 100);
+        }
+        catch { _slider = null; return -1; }
+    }
+
+    public static bool Set(int pct)
+    {
+        var pat = Pattern(GetSlider());
+        if (pat == null) return false;
+        try
+        {
+            double min = pat.CurrentMinimum, max = pat.CurrentMaximum;
+            if (max <= min) return false;
+            pat.SetValue(min + Math.Clamp(pct, 0, 100) / 100.0 * (max - min));
+            return true;
+        }
+        catch { _slider = null; return false; }
+    }
+}
+
 // Spotify's per-app volume via the Windows audio mixer (WASAPI session).
 internal static class SpotifyVolume
 {
@@ -361,7 +449,7 @@ internal static class Program
             durationMs = (long)dur,
             shuffle = pb.IsShuffleActive ?? false,
             shuffleMode = SpotifyShuffle.Mode,
-            volume = SpotifyVolume.Get(),
+            volume = SpotifyVolumeUia.Get() is var uv && uv >= 0 ? uv : SpotifyVolume.Get(),
             repeat = (pb.AutoRepeatMode ?? MediaPlaybackAutoRepeatMode.None).ToString(),
             canSeek = pb.Controls.IsPlaybackPositionEnabled,
             canNext = pb.Controls.IsNextEnabled,
@@ -420,7 +508,9 @@ internal static class Program
                 break;
             case "vol":
                 if (parts.Length == 2 && int.TryParse(parts[1], out var pct))
-                    SpotifyVolume.Set(pct);
+                {
+                    if (!SpotifyVolumeUia.Set(pct)) SpotifyVolume.Set(pct);
+                }
                 return; // no bump needed — the client already shows the new value
             case "shuffle":
             {
