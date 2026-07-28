@@ -97,25 +97,48 @@ internal static class SpotifyShuffle
         return "unknown";
     }
 
+    private static IUIAutomationElement? _btn; // cached; tree search is slow
+
+    private static string? SafeName(IUIAutomationElement? el)
+    {
+        try { return el?.CurrentName; } catch { return null; }
+    }
+
+    private static IUIAutomationElement? GetButton()
+    {
+        if (_btn != null && SafeName(_btn) != null) return _btn;
+        _btn = FindButton();
+        return _btn;
+    }
+
     public static void Refresh()
     {
-        var b = FindButton();
-        Mode = b == null ? "unknown" : ModeFromName(b.CurrentName ?? "");
+        var name = SafeName(GetButton());
+        Mode = name == null ? "unknown" : ModeFromName(name);
     }
 
     public static async Task<bool> Cycle()
     {
-        var b = FindButton();
-        if (b == null) return false;
+        var b = GetButton();
+        var before = SafeName(b);
+        if (b == null || before == null) return false;
         try
         {
             var pat = (IUIAutomationInvokePattern)b.GetCurrentPattern(10000 /*Invoke*/);
             pat.Invoke();
-            await Task.Delay(350);
-            Refresh();
-            return true;
         }
-        catch { return false; }
+        catch { _btn = null; return false; }
+
+        // Poll for the label flip instead of a fixed wait — usually <150ms.
+        for (int i = 0; i < 8; i++)
+        {
+            await Task.Delay(70);
+            var now = SafeName(b);
+            if (now == null) { _btn = null; b = GetButton(); now = SafeName(b); }
+            if (now != null && now != before) { Mode = ModeFromName(now); return true; }
+        }
+        Refresh();
+        return true;
     }
 }
 
@@ -328,7 +351,7 @@ internal static class Program
             {
                 // Preferred: click Spotify's own button so the cycle matches
                 // Spotify exactly (off -> shuffle -> smart shuffle -> off).
-                if (await SpotifyShuffle.Cycle()) break;
+                if (await SpotifyShuffle.Cycle()) { Bump(); break; }
 
                 // Fallback (Spotify window unavailable / non-English labels):
                 // plain SMTC toggle, verified so smart shuffle can't strand it.

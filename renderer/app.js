@@ -28,6 +28,8 @@ let tickTimer = 0;
 let scrubbing = false;
 let seekMuteUntil = 0;      // ignore stale positions right after a seek
 let playMuteUntil = 0;      // ignore stale playing flag right after play/pause
+let shuffleMuteUntil = 0;   // keep the predicted shuffle state briefly
+let shuffleSm = 'off';      // last known tri-state shuffle mode
 
 // ------------------------------------------------------------------
 // Album art (two stacked <img> per slot for crossfades)
@@ -175,12 +177,15 @@ function render(prev) {
   }
 
   // Tri-state shuffle: prefer the UIA-read mode (SMTC's bool reports FALSE
-  // during smart shuffle, so it can't be trusted alone).
-  const sm = s.shuffleMode && s.shuffleMode !== 'unknown'
-    ? s.shuffleMode
-    : (s.shuffle ? 'on' : 'off');
-  $('bShuffle').classList.toggle('on', sm !== 'off');
-  $('bShuffle').classList.toggle('smart', sm === 'smart');
+  // during smart shuffle, so it can't be trusted alone). Right after a click
+  // we keep the optimistic prediction until the real state settles.
+  if (Date.now() > shuffleMuteUntil) {
+    const sm = s.shuffleMode && s.shuffleMode !== 'unknown'
+      ? s.shuffleMode
+      : (s.shuffle ? 'on' : 'off');
+    shuffleSm = sm;
+    applyShuffleUi(sm);
+  }
   const rep = (s.repeat || 'None').toLowerCase();
   $('bRepeat').classList.toggle('on', rep !== 'none');
   $('bRepeat').classList.toggle('one', rep === 'track');
@@ -311,9 +316,20 @@ $('bPlay').addEventListener('click', () => {
 
 $('bNext').addEventListener('click', () => cmd('next'));
 $('bPrev').addEventListener('click', () => cmd('prev'));
-// No optimistic flip — the cycle has three states and the real one arrives
-// from the sidecar right after the click lands.
-$('bShuffle').addEventListener('click', () => cmd('shuffle'));
+function applyShuffleUi(sm) {
+  const b = $('bShuffle');
+  b.classList.toggle('on', sm !== 'off');
+  b.classList.toggle('smart', sm === 'smart');
+}
+
+// The cycle is deterministic (off -> on -> smart -> off), so flip the icon
+// instantly to the predicted state; the sidecar's real state confirms it.
+$('bShuffle').addEventListener('click', () => {
+  shuffleSm = shuffleSm === 'off' ? 'on' : shuffleSm === 'on' ? 'smart' : 'off';
+  shuffleMuteUntil = Date.now() + 1200;
+  applyShuffleUi(shuffleSm);
+  cmd('shuffle');
+});
 $('bRepeat').addEventListener('click', () => cmd('repeat'));
 $('bOpen').addEventListener('click', () => window.native?.openSpotify());
 $('xArt').addEventListener('dblclick', () => window.native?.openSpotify());
