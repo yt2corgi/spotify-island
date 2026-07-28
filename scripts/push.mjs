@@ -26,6 +26,12 @@ try { run(`git commit -m "v${pkg.version}"`); } catch { /* nothing to commit */ 
 run('git push origin main');
 
 const token = execSync('gh auth token').toString().trim();
-run('npx electron-builder --win --publish always', { GH_TOKEN: token });
+const publish = () => run('npx electron-builder --win --publish always', { GH_TOKEN: token });
+try {
+  publish();
+} catch {
+  console.log('\n>> publish failed (transient upload error?) — retrying once…');
+  publish();
+}
 
 console.log(`\n>> v${pkg.version} published — installed copies will auto-update.`);
