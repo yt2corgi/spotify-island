@@ -107,6 +107,9 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'), hash ? { hash } : undefined);
 
   win.once('ready-to-show', () => win.show());
+  win.webContents.on('render-process-gone', () => {
+    if (!quitting && win && !win.isDestroyed()) win.webContents.reload();
+  });
   win.webContents.on('did-finish-load', () => {
     if (lastMsg.art) win.webContents.send('media', lastMsg.art);
     if (lastMsg.state) win.webContents.send('media', lastMsg.state);
@@ -132,6 +135,7 @@ function initUpdater() {
   let autoUpdater;
   try { ({ autoUpdater } = require('electron-updater')); } catch { return; }
   autoUpdater.autoDownload = true;
+  autoUpdater.on('error', () => {}); // unhandled 'error' events would crash the app
   autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(true, true));
   const check = () => autoUpdater.checkForUpdates().catch(() => {});
   setTimeout(check, 30_000);
@@ -145,6 +149,8 @@ function startSidecar() {
     return;
   }
   sidecar = spawn(exe, [], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+  sidecar.on('error', () => {}); // spawn failure surfaces via 'exit' respawn path
+  sidecar.stdin.on('error', () => {}); // EPIPE race when the bridge dies mid-write
 
   let buf = '';
   sidecar.stdout.setEncoding('utf8');
@@ -184,8 +190,16 @@ let interactionLock = false; // held during drags — never go click-through mid
 const DEBUG_HOVER = process.argv.includes('--debug-hover');
 let dbgTick = 0;
 
+let topAssertTick = 0;
+
 function startHoverWatch() {
   setInterval(() => {
+    // Other topmost windows (game overlays etc.) can climb above us and the
+    // island vanishes behind them — re-assert the top slot every ~3s.
+    if (++topAssertTick >= 90) {
+      topAssertTick = 0;
+      if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, 'screen-saver');
+    }
     if (DEBUG_HOVER && ++dbgTick % 16 === 0) {
       try {
         fs.appendFileSync(path.join(os.tmpdir(), 'island-hover-debug.log'),
