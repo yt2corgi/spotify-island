@@ -1,9 +1,15 @@
-# Spotify Island
+# Ohm
 
 A macOS Dynamic Island-style Spotify controller for Windows. A black pill floats
 at the top-center of the screen showing the current track; hovering it springs
 open an expanded panel with album art, a scrubbable timeline, and transport
-controls (shuffle / previous / play-pause / next / repeat).
+controls (shuffle / previous / play-pause / next / repeat). Hovering the little
+bar at the bottom drops a detached queue card; middle-click the island (or use
+the right-click menu) to minimize the whole thing to a thin line — click the
+line to bring it back.
+
+To change the app icon, drop a square PNG (256px or larger) named `icon.png`
+into `build/` — it becomes the installer + app icon on the next build.
 
 ## How it works
 

@@ -37,16 +37,30 @@ function writeSettings(s) {
 
 function applyLoginItem(enabled) {
   if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: enabled, name: 'SpotifyIsland' });
+    app.setLoginItemSettings({ openAtLogin: enabled, name: 'Ohm' });
   } else {
     // Unpackaged: point the login item at electron.exe with this app dir as the arg.
     app.setLoginItemSettings({
       openAtLogin: enabled,
-      name: 'SpotifyIsland',
+      name: 'Ohm',
       path: process.execPath,
       args: [__dirname],
     });
   }
+}
+
+// productName changed "Spotify Island" -> "Ohm", which moves userData.
+function migrateUserData() {
+  try {
+    const oldDir = path.join(app.getPath('appData'), 'Spotify Island');
+    const newDir = app.getPath('userData');
+    if (!fs.existsSync(oldDir) || fs.existsSync(path.join(newDir, 'settings.json'))) return;
+    fs.mkdirSync(newDir, { recursive: true });
+    for (const f of ['settings.json', 'spotify-tokens.json']) {
+      const src = path.join(oldDir, f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(newDir, f));
+    }
+  } catch {}
 }
 
 function initLoginItem() {
@@ -108,6 +122,8 @@ function createWindow() {
   win.webContents.on('did-finish-load', () => {
     if (lastMsg.art) win.webContents.send('media', lastMsg.art);
     if (lastMsg.state) win.webContents.send('media', lastMsg.state);
+    const s = readSettings();
+    if (s?.mode === 'line') win.webContents.send('set-mode', 'line');
   });
   win.on('closed', () => { win = null; });
 
@@ -216,6 +232,12 @@ function setupIpc() {
     if (r && typeof r.x === 'number') zone = r;
   });
 
+  ipcMain.on('save-mode', (_e, mode) => {
+    if (mode !== 'line' && mode !== 'dock') return;
+    const s = readSettings() || { openAtLogin: true };
+    writeSettings({ ...s, mode });
+  });
+
   ipcMain.on('open-spotify', () => {
     shell.openExternal('spotify:').catch(() => {});
   });
@@ -271,6 +293,14 @@ function setupIpc() {
       },
       { type: 'separator' },
       {
+        label: s.mode === 'line' ? 'Show the dock' : 'Minimize to a line',
+        click: () => {
+          const mode = s.mode === 'line' ? 'dock' : 'line';
+          writeSettings({ ...s, mode });
+          if (win && !win.isDestroyed()) win.webContents.send('set-mode', mode);
+        },
+      },
+      {
         label: 'Start with Windows',
         type: 'checkbox',
         checked: !!s.openAtLogin,
@@ -292,6 +322,7 @@ if (!gotLock) {
 } else {
   app.whenReady().then(() => {
     try { os.setPriority(os.constants.priority.PRIORITY_ABOVE_NORMAL); } catch {}
+    migrateUserData();
     spotify = new Spotify(app.getPath('userData'), readClientId());
     initLoginItem();
     setupIpc();

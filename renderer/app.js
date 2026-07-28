@@ -22,6 +22,8 @@ const DEMO_QUEUE = location.hash === '#demo-q';
 
 let st = null;              // last media state from the sidecar
 let expanded = false;
+let panelOpen = false;      // queue drop-down visible
+let panelCloseTimer = 0;
 let expandTimer = 0;
 let collapseTimer = 0;
 let tickTimer = 0;
@@ -125,7 +127,7 @@ function render(prev) {
     xTitle.textContent = s.title || 'Unknown';
     xArtist.textContent = s.artist || '';
     requestAnimationFrame(applyMarquee);
-    if (listOpen && !DEMO) setTimeout(loadQueue, 600); // re-sync highlight on track change
+    if (panelOpen && !DEMO) setTimeout(loadQueue, 600); // re-sync highlight on track change
   }
 
   $('bShuffle').classList.toggle('on', !!s.shuffle);
@@ -159,27 +161,37 @@ function onMedia(msg) {
 // Expand / collapse
 // ------------------------------------------------------------------
 
-let listOpen = false;
-
-function applyState() {
-  island.dataset.state = !expanded ? 'collapsed' : listOpen ? 'list' : 'expanded';
-}
+let mode = 'dock'; // 'dock' | 'line' (ultra-minimized)
 
 function setExpanded(on) {
+  if (on && mode === 'line') return;
   if (expanded === on) return;
   expanded = on;
-  if (!on) listOpen = false;
-  applyState();
+  island.dataset.state = on ? 'expanded' : 'collapsed';
+  if (!on) closePanel();
   if (on) requestAnimationFrame(applyMarquee);
   updateTicker();
 }
 
-function setListOpen(on) {
-  if (listOpen === on) return;
-  listOpen = on;
-  applyState();
-  if (on) loadQueue();
+function setMode(m, save = true) {
+  if (mode === m) return;
+  mode = m;
+  island.dataset.mode = m;
+  if (m === 'line') { setExpanded(false); closePanel(); }
+  if (save) window.native?.saveMode(m);
 }
+
+// Click the line to bring the dock back; middle-click the island to hide it.
+island.addEventListener('click', () => {
+  if (mode === 'line') {
+    setMode('dock');
+    setExpanded(true); // cursor is already on it
+  }
+});
+island.addEventListener('auxclick', (e) => {
+  if (e.button === 1) setMode(mode === 'line' ? 'dock' : 'line');
+});
+window.native?.onMode((m) => setMode(m, false));
 
 // Main process watches the cursor against our reported bounds and tells us
 // when the pointer is over the island (DOM hover events can't be trusted
@@ -198,10 +210,18 @@ function onHover(over) {
 }
 window.native?.onHover(onHover);
 
-// Report the island's live bounds to the main process for hit-testing.
+// Report live bounds to the main process for hit-testing. When the queue
+// panel is open the hover zone is the union of island + gap + panel.
 function sendZone() {
   const r = island.getBoundingClientRect();
-  window.native?.zone({ x: r.x, y: r.y, w: r.width, h: r.height });
+  let x1 = r.left, y1 = r.top, x2 = r.right, y2 = r.bottom;
+  if (panelOpen) {
+    const p = queuePanel.getBoundingClientRect();
+    x1 = Math.min(x1, p.left);
+    x2 = Math.max(x2, p.right);
+    y2 = Math.max(y2, p.bottom);
+  }
+  window.native?.zone({ x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
 }
 new ResizeObserver(sendZone).observe(island);
 sendZone();
@@ -248,6 +268,7 @@ $('xArt').addEventListener('dblclick', () => window.native?.openSpotify());
 // ------------------------------------------------------------------
 
 const handle = $('handle');
+const queuePanel = $('queuePanel');
 const qList = $('qList');
 const qHeader = $('qHeader');
 const qMsg = $('qMsg');
@@ -257,8 +278,35 @@ const bConnect = $('bConnect');
 let queueView = null;    // last successful view (stale-while-revalidate)
 let queueReqId = 0;
 
-handle.addEventListener('mouseenter', () => setListOpen(true));
-handle.addEventListener('click', () => setListOpen(!listOpen));
+// The panel only stays open while the cursor is on the handle or the panel
+// itself; moving back onto the main island (or away) closes it.
+function openPanel() {
+  clearTimeout(panelCloseTimer);
+  if (panelOpen || !expanded || mode === 'line') return;
+  panelOpen = true;
+  document.body.dataset.panel = 'open';
+  loadQueue();
+  requestAnimationFrame(sendZone);
+}
+
+function closePanel() {
+  clearTimeout(panelCloseTimer);
+  if (!panelOpen) return;
+  panelOpen = false;
+  delete document.body.dataset.panel;
+  requestAnimationFrame(sendZone);
+}
+
+function schedulePanelClose() {
+  clearTimeout(panelCloseTimer);
+  panelCloseTimer = setTimeout(closePanel, 220);
+}
+
+handle.addEventListener('mouseenter', openPanel);
+handle.addEventListener('mouseleave', schedulePanelClose);
+handle.addEventListener('click', () => (panelOpen ? closePanel() : openPanel()));
+queuePanel.addEventListener('mouseenter', () => clearTimeout(panelCloseTimer));
+queuePanel.addEventListener('mouseleave', schedulePanelClose);
 
 function showQMsg(text, connect) {
   qMsg.hidden = false;
@@ -316,7 +364,7 @@ async function loadQueue() {
 
   const id = ++queueReqId;
   const r = await window.native?.getQueue();
-  if (id !== queueReqId || !listOpen) return;
+  if (id !== queueReqId || !panelOpen) return;
 
   if (r?.ok) {
     queueView = r;
@@ -370,7 +418,7 @@ bConnect.addEventListener('click', async () => {
   else showQMsg('Connection failed — try again from the right-click menu.', true);
 });
 
-window.native?.onSpotifyConnected(() => { if (listOpen) loadQueue(); });
+window.native?.onSpotifyConnected(() => { if (panelOpen) loadQueue(); });
 
 function demoQueue() {
   const names = ['Borderline', 'Breathe Deeper', 'Lost in Yesterday', 'Is It True', 'It Might Be Time', 'Glimmer', 'One More Hour', 'Instant Destiny'];
@@ -443,5 +491,5 @@ if (DEMO) {
   };
   render(null);
   if (DEMO_EXPANDED) setExpanded(true);
-  if (DEMO_QUEUE) setListOpen(true);
+  if (DEMO_QUEUE) openPanel();
 }

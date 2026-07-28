@@ -1,8 +1,8 @@
 {
   "name": "spotify-island",
-  "productName": "Spotify Island",
+  "productName": "Ohm",
   "version": "1.0.0",
-  "description": "Dynamic Island-style Spotify controller for Windows",
+  "description": "Ohm — Dynamic Island-style Spotify controller for Windows",
   "main": "main.js",
   "author": "liamb",
   "private": true,
@@ -13,8 +13,8 @@
     "push": "node scripts/push.mjs"
   },
   "build": {
-    "appId": "com.liamb.spotify-island",
-    "productName": "Spotify Island",
+    "appId": "com.liamb.ohm",
+    "productName": "Ohm",
     "directories": {
       "output": "dist"
     },
