@@ -1,0 +1,57 @@
+{
+  "name": "spotify-island",
+  "productName": "Spotify Island",
+  "version": "1.0.0",
+  "description": "Dynamic Island-style Spotify controller for Windows",
+  "main": "main.js",
+  "author": "liamb",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build:sidecar": "dotnet publish sidecar -c Release -o sidecar/dist",
+    "build:installer": "electron-builder --win --publish never",
+    "push": "node scripts/push.mjs"
+  },
+  "build": {
+    "appId": "com.liamb.spotify-island",
+    "productName": "Spotify Island",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "spotify.js",
+      "spotify-config.json",
+      "renderer/**"
+    ],
+    "extraResources": [
+      {
+        "from": "sidecar/dist",
+        "to": "sidecar"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "yt2corgi",
+      "repo": "spotify-island"
+    }
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}
