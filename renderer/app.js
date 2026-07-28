@@ -300,8 +300,13 @@ function renderQueue(view) {
   });
   qList.replaceChildren(frag);
 
-  const cur = qList.children[view.currentIndex];
-  if (cur) qList.scrollTop = Math.max(0, cur.offsetTop - qList.clientHeight / 2 + cur.offsetHeight / 2);
+  const scrollToCurrent = () => {
+    const cur = qList.children[view.currentIndex];
+    if (cur) qList.scrollTop = Math.max(0, cur.offsetTop - qList.clientHeight / 2 + cur.offsetHeight / 2);
+  };
+  // The island may still be mid-spring when this renders; wait for real height.
+  if (qList.clientHeight > 80) scrollToCurrent();
+  else setTimeout(scrollToCurrent, 540);
 }
 
 async function loadQueue() {
