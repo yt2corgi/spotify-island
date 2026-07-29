@@ -15,6 +15,15 @@ const lastMsg = {}; // replay cache: renderer may load after the sidecar's first
 
 const settingsPath = () => path.join(app.getPath('userData'), 'settings.json');
 
+// Tiny lifecycle log (userData/ohm.log) — evidence for "it just disappeared".
+function logEvent(msg) {
+  try {
+    const f = path.join(app.getPath('userData'), 'ohm.log');
+    try { if (fs.statSync(f).size > 262144) fs.truncateSync(f, 0); } catch {}
+    fs.appendFileSync(f, `${new Date().toISOString()} ${msg}\n`);
+  } catch {}
+}
+
 function readSettings() {
   try { return JSON.parse(fs.readFileSync(settingsPath(), 'utf8')); }
   catch { return null; }
@@ -106,8 +115,10 @@ function createWindow() {
     : process.argv.includes('--demo') ? 'demo' : undefined;
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'), hash ? { hash } : undefined);
 
+  logEvent('window created');
   win.once('ready-to-show', () => win.show());
-  win.webContents.on('render-process-gone', () => {
+  win.webContents.on('render-process-gone', (_e, details) => {
+    logEvent(`render-process-gone: ${details?.reason}`);
     if (!quitting && win && !win.isDestroyed()) win.webContents.reload();
   });
   win.webContents.on('did-finish-load', () => {
@@ -116,7 +127,11 @@ function createWindow() {
     const s = readSettings();
     if (s?.mode && s.mode !== 'dock') win.webContents.send('set-mode', s.mode);
   });
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => {
+    logEvent(`window closed (quitting=${quitting})`);
+    win = null;
+    if (!quitting) setTimeout(createWindow, 500); // the island must always exist
+  });
 
   screen.on('display-metrics-changed', positionWindow);
   screen.on('display-added', positionWindow);
@@ -169,7 +184,8 @@ function startSidecar() {
     }
   });
 
-  sidecar.on('exit', () => {
+  sidecar.on('exit', (code) => {
+    logEvent(`sidecar exit code=${code}`);
     sidecar = null;
     if (quitting) return;
     setTimeout(startSidecar, sidecarBackoff);
@@ -289,6 +305,7 @@ if (!gotLock) {
 } else {
   app.whenReady().then(() => {
     try { os.setPriority(os.constants.priority.PRIORITY_ABOVE_NORMAL); } catch {}
+    logEvent(`app start v${app.getVersion()}`);
     migrateUserData();
     initLoginItem();
     setupIpc();
@@ -296,12 +313,30 @@ if (!gotLock) {
     startSidecar();
     startHoverWatch();
     initUpdater();
+
+    // Watchdog: whatever happens — crash, close, hide — the island comes back.
+    setInterval(() => {
+      if (quitting) return;
+      if (!win || win.isDestroyed()) {
+        logEvent('watchdog: window missing, recreating');
+        createWindow();
+      } else if (!win.isVisible()) {
+        logEvent('watchdog: window hidden, showing');
+        win.showInactive();
+      }
+    }, 10000);
   });
 }
+
+app.on('before-quit', () => { quitting = true; logEvent('before-quit'); });
 
 app.on('will-quit', () => {
   quitting = true;
   if (sidecar) { try { sidecar.kill(); } catch {} }
 });
 
-app.on('window-all-closed', () => app.quit());
+// Never exit just because the window died — recreate it instead.
+app.on('window-all-closed', () => {
+  logEvent(`window-all-closed (quitting=${quitting})`);
+  if (quitting) app.quit();
+});
