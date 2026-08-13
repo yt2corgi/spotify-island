@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, Menu, shell, powerMonitor } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
@@ -122,6 +122,7 @@ function createWindow() {
     if (!quitting && win && !win.isDestroyed()) win.webContents.reload();
   });
   win.webContents.on('did-finish-load', () => {
+    interactionLock = false; // a mid-drag reload must not jam the hover poll
     if (lastMsg.art) win.webContents.send('media', lastMsg.art);
     if (lastMsg.state) win.webContents.send('media', lastMsg.state);
     const s = readSettings();
@@ -202,6 +203,13 @@ const ALLOWED_CMDS = /^(playpause|play|pause|next|prev|shuffle|repeat|seek -?\d{
 let zone = null;
 let hovering = false;
 let interactionLock = false; // held during drags — never go click-through mid-drag
+let lockSince = 0;
+
+function applyMouseState() {
+  if (!win || win.isDestroyed()) return;
+  if (hovering) win.setIgnoreMouseEvents(false);
+  else win.setIgnoreMouseEvents(true, { forward: true });
+}
 
 const DEBUG_HOVER = process.argv.includes('--debug-hover');
 let dbgTick = 0;
@@ -214,7 +222,15 @@ function startHoverWatch() {
     // island vanishes behind them — re-assert the top slot every ~3s.
     if (++topAssertTick >= 90) {
       topAssertTick = 0;
-      if (win && !win.isDestroyed()) win.setAlwaysOnTop(true, 'screen-saver');
+      if (win && !win.isDestroyed()) {
+        win.setAlwaysOnTop(true, 'screen-saver');
+        applyMouseState(); // heal any OS-side click-through desync too
+      }
+    }
+    // A drag lock can only jam if a pointer-release got lost — expire it.
+    if (interactionLock && Date.now() - lockSince > 15000) {
+      logEvent('interaction lock expired (missed release?)');
+      interactionLock = false;
     }
     if (DEBUG_HOVER && ++dbgTick % 16 === 0) {
       try {
@@ -235,8 +251,7 @@ function startHoverWatch() {
       p.y >= b.y + zone.y - pad && p.y <= b.y + zone.y + zone.h + pad;
     if (inside === hovering) return;
     hovering = inside;
-    if (inside) win.setIgnoreMouseEvents(false);
-    else win.setIgnoreMouseEvents(true, { forward: true });
+    applyMouseState();
     if (!win.isDestroyed()) win.webContents.send('hover-state', inside);
   }, 33);
 }
@@ -253,6 +268,7 @@ function setupIpc() {
 
   ipcMain.on('interaction-lock', (_e, on) => {
     interactionLock = !!on;
+    if (on) lockSince = Date.now();
   });
 
   ipcMain.on('save-mode', (_e, mode) => {
@@ -313,6 +329,18 @@ if (!gotLock) {
     startSidecar();
     startHoverWatch();
     initUpdater();
+
+    // Sleep/unlock can desync a transparent window's click-through state.
+    const heal = (why) => {
+      logEvent(`heal after ${why}`);
+      interactionLock = false;
+      if (win && !win.isDestroyed()) {
+        win.setAlwaysOnTop(true, 'screen-saver');
+        applyMouseState();
+      }
+    };
+    powerMonitor.on('resume', () => heal('resume'));
+    powerMonitor.on('unlock-screen', () => heal('unlock-screen'));
 
     // Watchdog: whatever happens — crash, close, hide — the island comes back.
     setInterval(() => {
